@@ -3,7 +3,6 @@ import { mealPlansApi, MealPlanRun } from "../lib/api"
 import { LoadingState, ErrorState, EmptyState } from "../components/StatusStates"
 import { useAuth } from "../lib/auth"
 
-const DISEASE_OPTIONS = ["고혈압", "당뇨병", "신장질환", "치매"]
 const POLL_INTERVAL_MS = 3000
 
 const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
@@ -17,7 +16,6 @@ const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
 export default function MentorDesign() {
   const { facilityId } = useAuth()
   const FACILITY_ID = facilityId || ""
-  const [selectedDiseases, setSelectedDiseases] = useState<string[]>(["고혈압", "당뇨병"])
   const [run, setRun] = useState<MealPlanRun | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -48,19 +46,15 @@ export default function MentorDesign() {
 
   useEffect(() => stopPolling, [])
 
-  const toggleDisease = (d: string) => {
-    setSelectedDiseases((prev) =>
-      prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]
-    )
-  }
-
   const handleRunOptimize = async () => {
     setError(null)
     setSubmitting(true)
     try {
+      // diseases는 더 이상 직접 선택하지 않음 — 백엔드가 시설에 등록된
+      // 전체 활성 환자의 질환을 자동으로 모아 최적화 대상으로 사용함
+      // (agents/facility_optimization.get_all_diseases와 동일한 원본 설계).
       const { run_id } = await mealPlansApi.run({
         facility_id: FACILITY_ID,
-        diseases: selectedDiseases,
         auto_approve: true,
       })
       const initial = await mealPlansApi.getStatus(run_id)
@@ -108,30 +102,19 @@ export default function MentorDesign() {
       </div>
 
       <div className="optimizer-box">
-        <div className="card-title" style={{ marginBottom: 12, color: "var(--text1)" }}>
-          <i className="ti ti-settings" style={{ color: "var(--accent)" }} /> 대상 질환 선택
+        <div className="card-title" style={{ marginBottom: 8, color: "var(--text1)" }}>
+          <i className="ti ti-users" style={{ color: "var(--accent)" }} /> 전체 어르신 대상 최적화
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-          {DISEASE_OPTIONS.map((d) => (
-            <button
-              key={d}
-              onClick={() => toggleDisease(d)}
-              className="btn"
-              style={{
-                background: selectedDiseases.includes(d) ? "var(--accent)" : undefined,
-                color: selectedDiseases.includes(d) ? "#fff" : undefined,
-              }}
-            >
-              {d}
-            </button>
-          ))}
+        <div style={{ fontSize: 12.5, color: "var(--text3)", marginBottom: 16 }}>
+          시설에 등록된 모든 어르신의 질환을 자동으로 분석해, 전원에게 안전한
+          공통 식단을 설계합니다. (질환 직접 선택 불필요)
         </div>
 
         <div className="btn-row" style={{ marginBottom: 0 }}>
           <button
             className="btn btn-accent"
             onClick={handleRunOptimize}
-            disabled={submitting || isBusy || selectedDiseases.length === 0}
+            disabled={submitting || Boolean(isBusy)}
           >
             <i className="ti ti-sparkles" />
             {submitting || isBusy ? "최적화 진행 중..." : "최적화 실행"}
@@ -150,6 +133,12 @@ export default function MentorDesign() {
 
           <div className="opt-params">
             <div className="opt-param">
+              <div className="opt-param-label">대상 질환 (자동 도출)</div>
+              <div className="opt-param-val">
+                {run.diseases_targeted?.length ? run.diseases_targeted.join(", ") : "분석 중..."}
+              </div>
+            </div>
+            <div className="opt-param">
               <div className="opt-param-label">영양 위반도 (f1)</div>
               <div className="opt-param-val">{run.f1_violation?.toFixed(4) ?? "-"}</div>
             </div>
@@ -158,7 +147,7 @@ export default function MentorDesign() {
               <div className="opt-param-val">{run.reoptimize_count}</div>
             </div>
             <div className="opt-param">
-              <div className="opt-param-label">제외 질환</div>
+              <div className="opt-param-label">교집합 제외 질환</div>
               <div className="opt-param-val">
                 {run.diseases_excluded?.length ? run.diseases_excluded.join(", ") : "없음"}
               </div>
@@ -245,7 +234,7 @@ export default function MentorDesign() {
       {!run && !error && (
         <EmptyState
           message="아직 생성된 식단이 없습니다."
-          hint="대상 질환을 선택하고 '최적화 실행'을 눌러 시작하세요."
+          hint="'최적화 실행'을 누르면 전체 어르신 대상 식단이 자동 설계됩니다."
         />
       )}
     </div>

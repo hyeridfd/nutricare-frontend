@@ -140,7 +140,6 @@ export interface MealPlanSlot {
 export const mealPlansApi = {
   run: (payload: {
     facility_id: string
-    diseases: string[]
     budget_per_meal?: number
     auto_approve?: boolean
   }) =>
