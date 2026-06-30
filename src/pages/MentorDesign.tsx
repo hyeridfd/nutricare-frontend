@@ -4,6 +4,7 @@ import { LoadingState, ErrorState, EmptyState } from "../components/StatusStates
 import { useAuth } from "../lib/auth"
 
 const POLL_INTERVAL_MS = 3000
+const MAX_CONSECUTIVE_FAILURES = 5  // 약 15초간 연속 실패해야 중단 (일시적 네트워크 끊김 허용)
 
 const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   optimizing:      { text: "최적화 진행 중", cls: "badge-amber" },
@@ -20,6 +21,7 @@ export default function MentorDesign() {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const failureCountRef = useRef(0)
 
   const stopPolling = () => {
     if (pollRef.current) {
@@ -30,16 +32,25 @@ export default function MentorDesign() {
 
   const pollStatus = (runId: string) => {
     stopPolling()
+    failureCountRef.current = 0
     pollRef.current = setInterval(async () => {
       try {
         const updated = await mealPlansApi.getStatus(runId)
+        failureCountRef.current = 0   // 성공하면 실패 카운트 리셋
+        setError(null)                // 이전 일시적 에러 메시지도 정리
         setRun(updated)
         if (updated.status === "approved" || updated.status === "rejected") {
           stopPolling()
         }
       } catch (e) {
-        setError((e as Error).message)
-        stopPolling()
+        failureCountRef.current += 1
+        // NSGA-II가 몇 분씩 걸리는 동안 Render 콜드스타트/일시적 네트워크
+        // 문제로 폴링 한두 번이 실패할 수 있음 — 그때마다 멈추면 사용자가
+        // 영영 결과를 못 보게 되므로, 연속 실패가 누적될 때만 중단함.
+        if (failureCountRef.current >= MAX_CONSECUTIVE_FAILURES) {
+          setError(`${(e as Error).message} (연속 ${MAX_CONSECUTIVE_FAILURES}회 실패로 상태 확인을 중단했습니다)`)
+          stopPolling()
+        }
       }
     }, POLL_INTERVAL_MS)
   }
