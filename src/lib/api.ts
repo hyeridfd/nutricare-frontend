@@ -69,6 +69,26 @@ export interface ResidentRow {
   status: "정상" | "보강필요"
 }
 
+export interface NutrientSummary {
+  facility_avg: number
+  target: number
+  pct_of_target: number
+}
+export interface PatientNutrientRow {
+  patient_id: string
+  patient_name: string
+  avg_energy_kcal: number
+  avg_protein_g: number
+  avg_carb_g: number
+  avg_sodium_mg: number
+  energy_pct_of_target: number
+  is_deficit: boolean
+}
+export interface NutritionIntakeResponse {
+  by_nutrient: Record<string, NutrientSummary>
+  by_patient: PatientNutrientRow[]
+}
+
 export const dashboardApi = {
   summary: (facilityId: string) =>
     request<DashboardSummary>(`/api/dashboard/summary?facility_id=${facilityId}`),
@@ -80,6 +100,10 @@ export const dashboardApi = {
     ),
   alerts: (facilityId: string, status = "open") =>
     request(`/api/dashboard/nutrition-alerts?facility_id=${facilityId}&status=${status}`),
+  nutritionIntake: (facilityId: string, days = 7) =>
+    request<NutritionIntakeResponse>(
+      `/api/dashboard/nutrition-intake?facility_id=${facilityId}&days=${days}`
+    ),
 }
 
 // ── 식단 설계 (MENTOR) ─────────────────────────────────

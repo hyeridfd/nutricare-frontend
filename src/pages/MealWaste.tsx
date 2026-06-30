@@ -6,6 +6,7 @@ import {
 import { dashboardApi } from "../lib/api"
 import { LoadingState, ErrorState, EmptyState } from "../components/StatusStates"
 import { useAuth } from "../lib/auth"
+import WasteLogForm from "../components/WasteLogForm"
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip)
 
@@ -38,6 +39,9 @@ export default function MealWaste() {
       </div>
 
       {error && <ErrorState message={`데이터를 불러오지 못했습니다: ${error}`} onRetry={load} />}
+
+      <WasteLogForm onSaved={load} />
+
       {!error && !data && <LoadingState />}
       {data && !hasData && (
         <EmptyState message="최근 잔반 기록이 없습니다." hint="잔반 입력 후 다시 확인해 주세요." />
