@@ -5,6 +5,8 @@ import { useAuth } from "../lib/auth"
 
 const POLL_INTERVAL_MS = 3000
 const MAX_CONSECUTIVE_FAILURES = 5  // 약 15초간 연속 실패해야 중단 (일시적 네트워크 끊김 허용)
+const STORAGE_KEY_RUN_ID = "nutricare_mentor_run_id"
+const STORAGE_KEY_START_TIME = "nutricare_mentor_start_time"
 
 const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   optimizing:      { text: "최적화 진행 중", cls: "badge-amber" },
@@ -45,10 +47,12 @@ export default function MentorDesign() {
     }
   }
 
-  const startTicker = () => {
+  const startTicker = (resumeFromStart?: number) => {
     stopTicker()
-    startTimeRef.current = Date.now()
-    setElapsedSec(0)
+    const startTime = resumeFromStart ?? Date.now()
+    startTimeRef.current = startTime
+    localStorage.setItem(STORAGE_KEY_START_TIME, String(startTime))
+    setElapsedSec(Math.floor((Date.now() - startTime) / 1000))
     tickerRef.current = setInterval(() => {
       if (startTimeRef.current) {
         setElapsedSec(Math.floor((Date.now() - startTimeRef.current) / 1000))
@@ -63,6 +67,11 @@ export default function MentorDesign() {
     }
   }
 
+  const clearPersistedRun = () => {
+    localStorage.removeItem(STORAGE_KEY_RUN_ID)
+    localStorage.removeItem(STORAGE_KEY_START_TIME)
+  }
+
   const pollStatus = (runId: string) => {
     stopPolling()
     failureCountRef.current = 0
@@ -75,6 +84,7 @@ export default function MentorDesign() {
         if (updated.status === "approved" || updated.status === "rejected") {
           stopPolling()
           stopTicker()
+          clearPersistedRun()
         }
       } catch (e) {
         failureCountRef.current += 1
@@ -90,7 +100,30 @@ export default function MentorDesign() {
     }, POLL_INTERVAL_MS)
   }
 
-  useEffect(() => () => { stopPolling(); stopTicker() }, [])
+  // 페이지 로드/탭 재진입 시, 이전에 시작해 둔 진행 중인 실행이 있으면
+  // 자동으로 이어서 폴링. 다른 탭을 보거나 새로고침해도 진행 상황을
+  // 계속 확인할 수 있게 함(실제 최적화는 Render 서버에서 계속 돌고 있으므로
+  // 여기서는 그 상태를 다시 "구독"하는 것뿐임).
+  useEffect(() => {
+    const savedRunId = localStorage.getItem(STORAGE_KEY_RUN_ID)
+    const savedStartTime = localStorage.getItem(STORAGE_KEY_START_TIME)
+
+    if (savedRunId) {
+      mealPlansApi.getStatus(savedRunId)
+        .then((updated) => {
+          setRun(updated)
+          if (updated.status !== "approved" && updated.status !== "rejected") {
+            startTicker(savedStartTime ? Number(savedStartTime) : undefined)
+            pollStatus(savedRunId)
+          } else {
+            clearPersistedRun()
+          }
+        })
+        .catch(() => clearPersistedRun())  // 더 이상 조회 불가한 run이면 정리
+    }
+
+    return () => { stopPolling(); stopTicker() }
+  }, [])
 
   const handleRunOptimize = async () => {
     setError(null)
@@ -104,16 +137,20 @@ export default function MentorDesign() {
         facility_id: FACILITY_ID,
         auto_approve: true,
       })
+      localStorage.setItem(STORAGE_KEY_RUN_ID, run_id)
+
       const initial = await mealPlansApi.getStatus(run_id)
       setRun(initial)
       if (initial.status !== "approved" && initial.status !== "rejected") {
         pollStatus(run_id)
       } else {
         stopTicker()
+        clearPersistedRun()
       }
     } catch (e) {
       setError((e as Error).message)
       stopTicker()
+      clearPersistedRun()
     } finally {
       setSubmitting(false)
     }
