@@ -176,6 +176,32 @@ export default function MentorDesign() {
             </div>
           )}
 
+          {run.status === "approved" && (
+            run.report_meal_plan_url || run.report_serving_url || run.report_cooking_url ? (
+              <div className="btn-row">
+                {run.report_meal_plan_url && (
+                  <a className="btn btn-accent" href={run.report_meal_plan_url} target="_blank" rel="noreferrer">
+                    <i className="ti ti-file-spreadsheet" /> 식단표_28일.xlsx
+                  </a>
+                )}
+                {run.report_serving_url && (
+                  <a className="btn btn-accent" href={run.report_serving_url} target="_blank" rel="noreferrer">
+                    <i className="ti ti-file-spreadsheet" /> 개인별_배식량.xlsx
+                  </a>
+                )}
+                {run.report_cooking_url && (
+                  <a className="btn" href={run.report_cooking_url} target="_blank" rel="noreferrer">
+                    <i className="ti ti-file-text" /> 조리_지침서.txt
+                  </a>
+                )}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                보고서 파일을 준비하지 못했습니다. 잠시 후 새로고침해 보세요.
+              </div>
+            )
+          )}
+
           {isBusy && <LoadingState message="처리 중입니다. 잠시만 기다려 주세요..." />}
 
           {run.meal_plan_slots && run.meal_plan_slots.length > 0 && (

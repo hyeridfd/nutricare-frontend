@@ -91,6 +91,9 @@ export interface MealPlanRun {
   f1_violation: number | null
   reoptimize_count: number
   meal_plan_slots?: MealPlanSlot[]
+  report_meal_plan_url: string | null
+  report_serving_url: string | null
+  report_cooking_url: string | null
 }
 
 export interface MealPlanSlot {
