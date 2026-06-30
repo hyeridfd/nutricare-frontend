@@ -112,6 +112,7 @@ export interface MealPlanRun {
   status: "optimizing" | "pending_review" | "approving" | "approved" | "rejected"
   diseases_targeted: string[]
   diseases_excluded: string[]
+  dementia_patient_count: number
   f1_violation: number | null
   reoptimize_count: number
   meal_plan_slots?: MealPlanSlot[]

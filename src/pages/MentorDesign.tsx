@@ -133,7 +133,7 @@ export default function MentorDesign() {
 
           <div className="opt-params">
             <div className="opt-param">
-              <div className="opt-param-label">대상 질환 (자동 도출)</div>
+              <div className="opt-param-label">대상 질환 (메뉴 풀 제한 기준)</div>
               <div className="opt-param-val">
                 {run.diseases_targeted?.length ? run.diseases_targeted.join(", ") : "분석 중..."}
               </div>
@@ -153,6 +153,19 @@ export default function MentorDesign() {
               </div>
             </div>
           </div>
+
+          {run.dementia_patient_count > 0 && (
+            <div style={{
+              fontSize: 12.5, color: "var(--text2)", background: "var(--bg3)",
+              borderRadius: "var(--radius-sm)", padding: "10px 12px",
+              display: "flex", alignItems: "center", gap: 8,
+            }}>
+              <i className="ti ti-brain" style={{ color: "var(--accent)" }} />
+              치매 어르신 {run.dementia_patient_count}명은 메뉴 선정 단계가 아니라,
+              개인별 배식 단계에서 철분·비타민 등 부족 영양소를 보강하는 방식으로
+              별도 반영됩니다.
+            </div>
+          )}
 
           {run.status === "pending_review" && (
             <div className="btn-row">
