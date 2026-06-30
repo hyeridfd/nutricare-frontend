@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   ]},
   { section: "식단 관리", items: [
     { path: "/design", label: "MENTOR 식단 설계", icon: "ti-sparkles" },
+    { path: "/preferences", label: "선호도 확인", icon: "ti-thumb-up" },
     { path: "/orders", label: "발주 엑셀 생성", icon: "ti-file-spreadsheet" },
   ]},
 ]

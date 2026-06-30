@@ -178,3 +178,43 @@ export const ordersApi = {
   preview: (runId: string, weekOffset = 0) =>
     request(`/api/orders/preview?run_id=${runId}&week_offset=${weekOffset}`),
 }
+
+// ── 선호도 ──────────────────────────────────────────────
+export interface PreferenceItem {
+  menu_name: string
+  score: number
+  updated_at: string
+}
+export interface FacilityPreferenceResponse {
+  items: PreferenceItem[]
+  dislike_count: number
+  like_count: number
+}
+export interface PatientPreferenceSummary {
+  patient_id: string
+  patient_name: string
+  total_menus: number
+  dislike_count: number
+  like_count: number
+}
+export interface PatientPreferenceDetail {
+  patient_name: string | null
+  items: PreferenceItem[]
+  dislike_count: number
+  like_count: number
+}
+
+export const preferencesApi = {
+  facility: (facilityId: string, limit = 50) =>
+    request<FacilityPreferenceResponse>(
+      `/api/preferences/facility?facility_id=${facilityId}&limit=${limit}`
+    ),
+  patientsList: (facilityId: string) =>
+    request<{ patients: PatientPreferenceSummary[] }>(
+      `/api/preferences/patients?facility_id=${facilityId}`
+    ),
+  patientDetail: (facilityId: string, patientId: string) =>
+    request<PatientPreferenceDetail>(
+      `/api/preferences/patients?facility_id=${facilityId}&patient_id=${patientId}`
+    ),
+}

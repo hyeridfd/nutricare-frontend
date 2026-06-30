@@ -7,6 +7,7 @@ import ResidentStatus from "./pages/ResidentStatus"
 import MealWaste from "./pages/MealWaste"
 import NutritionIntake from "./pages/NutritionIntake"
 import MentorDesign from "./pages/MentorDesign"
+import Preferences from "./pages/Preferences"
 import OrderExcel from "./pages/OrderExcel"
 import "./dashboard.css"
 
@@ -35,6 +36,7 @@ export default function App() {
                     <Route path="/meal-waste" element={<MealWaste />} />
                     <Route path="/nutrition" element={<NutritionIntake />} />
                     <Route path="/design" element={<MentorDesign />} />
+                    <Route path="/preferences" element={<Preferences />} />
                     <Route path="/orders" element={<OrderExcel />} />
                   </Routes>
                 </DashboardLayout>
