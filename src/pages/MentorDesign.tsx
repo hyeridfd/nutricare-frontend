@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react"
 import { mealPlansApi, MealPlanRun } from "../lib/api"
 import { LoadingState, ErrorState, EmptyState } from "../components/StatusStates"
+import { useAuth } from "../lib/auth"
 
-const FACILITY_ID = import.meta.env.VITE_FACILITY_ID || ""
 const DISEASE_OPTIONS = ["고혈압", "당뇨병", "신장질환", "치매"]
 const POLL_INTERVAL_MS = 3000
 
@@ -15,6 +15,8 @@ const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
 }
 
 export default function MentorDesign() {
+  const { facilityId } = useAuth()
+  const FACILITY_ID = facilityId || ""
   const [selectedDiseases, setSelectedDiseases] = useState<string[]>(["고혈압", "당뇨병"])
   const [run, setRun] = useState<MealPlanRun | null>(null)
   const [error, setError] = useState<string | null>(null)

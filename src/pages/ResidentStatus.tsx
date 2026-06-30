@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react"
 import { dashboardApi, DashboardSummary, ResidentRow } from "../lib/api"
 import { LoadingState, ErrorState, EmptyState } from "../components/StatusStates"
-
-const FACILITY_ID = import.meta.env.VITE_FACILITY_ID || ""
+import { useAuth } from "../lib/auth"
 
 const TYPE_BADGE_CLASS: Record<string, string> = {
   "일반형": "badge-blue",
@@ -16,6 +15,8 @@ function badgeClassFor(label: string) {
 }
 
 export default function ResidentStatus() {
+  const { facilityId } = useAuth()
+  const FACILITY_ID = facilityId || ""
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [residents, setResidents] = useState<ResidentRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -32,7 +33,7 @@ export default function ResidentStatus() {
       .catch((e) => setError(e.message))
   }
 
-  useEffect(load, [])
+  useEffect(load, [FACILITY_ID])
 
   const today = new Date().toLocaleDateString("ko-KR", {
     year: "numeric", month: "long", day: "numeric", weekday: "long",

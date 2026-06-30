@@ -5,12 +5,13 @@ import {
 } from "chart.js"
 import { dashboardApi } from "../lib/api"
 import { LoadingState, ErrorState, EmptyState } from "../components/StatusStates"
+import { useAuth } from "../lib/auth"
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip)
 
-const FACILITY_ID = import.meta.env.VITE_FACILITY_ID || ""
-
 export default function MealWaste() {
+  const { facilityId } = useAuth()
+  const FACILITY_ID = facilityId || ""
   const [data, setData] = useState<{
     by_disease_type: Record<string, number>
     by_meal: Record<string, number>
@@ -23,7 +24,7 @@ export default function MealWaste() {
     dashboardApi.mealWaste(FACILITY_ID).then(setData).catch((e) => setError(e.message))
   }
 
-  useEffect(load, [])
+  useEffect(load, [FACILITY_ID])
 
   const hasData = data && Object.keys(data.by_disease_type).length > 0
 

@@ -15,6 +15,21 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json()
 }
 
+// ── 인증 ────────────────────────────────────────────────
+export interface LoginResponse {
+  token: string
+  facility_id: string
+  facility_name: string
+}
+
+export const authApi = {
+  login: (loginId: string, password: string) =>
+    request<LoginResponse>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ login_id: loginId, password }),
+    }),
+}
+
 // ── 환자 ────────────────────────────────────────────────
 export interface Patient {
   id: string
