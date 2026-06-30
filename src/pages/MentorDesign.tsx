@@ -14,19 +14,52 @@ const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   rejected:        { text: "실패 / 반려",    cls: "badge-red" },
 }
 
+function formatElapsed(sec: number): string {
+  const m = Math.floor(sec / 60)
+  const s = sec % 60
+  return m > 0 ? `${m}분 ${s}초` : `${s}초`
+}
+
+const STAGE_HINT: Record<string, string> = {
+  optimizing: "NSGA-II 다목적 최적화를 진행 중입니다. 어르신 수가 많을수록 오래 걸리며, 보통 2~10분 정도 소요됩니다.",
+  pending_review: "최적화가 끝났습니다. 결과를 확인하고 승인해 주세요.",
+  approving: "승인 후 개인별 배식량 계산과 보고서 작성을 진행 중입니다. 1분 내외 소요됩니다.",
+}
+
 export default function MentorDesign() {
   const { facilityId } = useAuth()
   const FACILITY_ID = facilityId || ""
   const [run, setRun] = useState<MealPlanRun | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [elapsedSec, setElapsedSec] = useState(0)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const tickerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const startTimeRef = useRef<number | null>(null)
   const failureCountRef = useRef(0)
 
   const stopPolling = () => {
     if (pollRef.current) {
       clearInterval(pollRef.current)
       pollRef.current = null
+    }
+  }
+
+  const startTicker = () => {
+    stopTicker()
+    startTimeRef.current = Date.now()
+    setElapsedSec(0)
+    tickerRef.current = setInterval(() => {
+      if (startTimeRef.current) {
+        setElapsedSec(Math.floor((Date.now() - startTimeRef.current) / 1000))
+      }
+    }, 1000)
+  }
+
+  const stopTicker = () => {
+    if (tickerRef.current) {
+      clearInterval(tickerRef.current)
+      tickerRef.current = null
     }
   }
 
@@ -41,6 +74,7 @@ export default function MentorDesign() {
         setRun(updated)
         if (updated.status === "approved" || updated.status === "rejected") {
           stopPolling()
+          stopTicker()
         }
       } catch (e) {
         failureCountRef.current += 1
@@ -50,16 +84,18 @@ export default function MentorDesign() {
         if (failureCountRef.current >= MAX_CONSECUTIVE_FAILURES) {
           setError(`${(e as Error).message} (연속 ${MAX_CONSECUTIVE_FAILURES}회 실패로 상태 확인을 중단했습니다)`)
           stopPolling()
+          stopTicker()
         }
       }
     }, POLL_INTERVAL_MS)
   }
 
-  useEffect(() => stopPolling, [])
+  useEffect(() => () => { stopPolling(); stopTicker() }, [])
 
   const handleRunOptimize = async () => {
     setError(null)
     setSubmitting(true)
+    startTicker()
     try {
       // diseases는 더 이상 직접 선택하지 않음 — 백엔드가 시설에 등록된
       // 전체 활성 환자의 질환을 자동으로 모아 최적화 대상으로 사용함
@@ -72,9 +108,12 @@ export default function MentorDesign() {
       setRun(initial)
       if (initial.status !== "approved" && initial.status !== "rejected") {
         pollStatus(run_id)
+      } else {
+        stopTicker()
       }
     } catch (e) {
       setError((e as Error).message)
+      stopTicker()
     } finally {
       setSubmitting(false)
     }
@@ -215,7 +254,16 @@ export default function MentorDesign() {
             )
           )}
 
-          {isBusy && <LoadingState message="처리 중입니다. 잠시만 기다려 주세요..." />}
+          {isBusy && (
+            <div style={{ textAlign: "center", padding: "16px 0" }}>
+              <LoadingState
+                message={`처리 중입니다 — 경과 시간 ${formatElapsed(elapsedSec)}`}
+              />
+              <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>
+                {STAGE_HINT[run!.status] ?? "잠시만 기다려 주세요..."}
+              </div>
+            </div>
+          )}
 
           {run.meal_plan_slots && run.meal_plan_slots.length > 0 && (
             <div style={{ overflowX: "auto", marginTop: 12 }}>
