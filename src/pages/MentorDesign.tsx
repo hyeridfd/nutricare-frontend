@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { mealPlansApi, MealPlanRun } from "../lib/api"
+import { mealPlansApi, MealPlanRun, MealPlanRunSummary } from "../lib/api"
 import { LoadingState, ErrorState, EmptyState } from "../components/StatusStates"
 import { useAuth } from "../lib/auth"
 
@@ -22,6 +22,17 @@ function formatElapsed(sec: number): string {
   return m > 0 ? `${m}분 ${s}초` : `${s}초`
 }
 
+// [추가 — 2026-07-01] 드롭다운에 보여줄 run 요약 라벨.
+// run_id(UUID) 대신 날짜·질환·상태로 사람이 바로 알아볼 수 있게 함.
+function formatRunLabel(r: MealPlanRunSummary): string {
+  const dateStr = new Date(r.created_at).toLocaleString("ko-KR", {
+    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+  })
+  const diseases = r.diseases_targeted?.length ? r.diseases_targeted.join(",") : "분석중"
+  const statusText = STATUS_LABEL[r.status]?.text ?? r.status
+  return `${dateStr} · ${diseases} · ${statusText}`
+}
+
 const STAGE_HINT: Record<string, string> = {
   optimizing: "NSGA-II 다목적 최적화를 진행 중입니다. 어르신 수가 많을수록 오래 걸리며, 보통 2~10분 정도 소요됩니다.",
   pending_review: "최적화가 끝났습니다. 결과를 확인하고 승인해 주세요.",
@@ -32,6 +43,7 @@ export default function MentorDesign() {
   const { facilityId } = useAuth()
   const FACILITY_ID = facilityId || ""
   const [run, setRun] = useState<MealPlanRun | null>(null)
+  const [history, setHistory] = useState<MealPlanRunSummary[]>([])
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [elapsedSec, setElapsedSec] = useState(0)
@@ -67,9 +79,33 @@ export default function MentorDesign() {
     }
   }
 
+  // [수정 — 2026-07-01] 기존에는 status가 approved/rejected가 되는 순간
+  // run_id까지 localStorage에서 지워버려서, 완료된 결과를 보다가 다른
+  // 탭으로 갔다 돌아오면 화면이 통째로 EmptyState로 리셋되는 문제가 있었음.
+  // 이제 "마지막으로 보고 있던 run_id"는 완료 여부와 무관하게 유지하고,
+  // 진행 중 타이머 계산에만 쓰이는 start_time만 정리함.
+  const persistRunId = (runId: string) => {
+    localStorage.setItem(STORAGE_KEY_RUN_ID, runId)
+  }
+
+  const clearStartTime = () => {
+    localStorage.removeItem(STORAGE_KEY_START_TIME)
+  }
+
   const clearPersistedRun = () => {
     localStorage.removeItem(STORAGE_KEY_RUN_ID)
     localStorage.removeItem(STORAGE_KEY_START_TIME)
+  }
+
+  // [추가 — 2026-07-01] 드롭다운에 쓸 최근 실행 이력 로드
+  const fetchHistory = async () => {
+    if (!FACILITY_ID) return
+    try {
+      const list = await mealPlansApi.list(FACILITY_ID)
+      setHistory(list)
+    } catch {
+      // 이력 조회 실패는 화면 전체를 막을 정도는 아니므로 조용히 무시
+    }
   }
 
   const pollStatus = (runId: string) => {
@@ -84,7 +120,8 @@ export default function MentorDesign() {
         if (updated.status === "approved" || updated.status === "rejected") {
           stopPolling()
           stopTicker()
-          clearPersistedRun()
+          clearStartTime()
+          fetchHistory()
         }
       } catch (e) {
         failureCountRef.current += 1
@@ -108,6 +145,8 @@ export default function MentorDesign() {
     const savedRunId = localStorage.getItem(STORAGE_KEY_RUN_ID)
     const savedStartTime = localStorage.getItem(STORAGE_KEY_START_TIME)
 
+    fetchHistory()
+
     if (savedRunId) {
       mealPlansApi.getStatus(savedRunId)
         .then((updated) => {
@@ -116,7 +155,7 @@ export default function MentorDesign() {
             startTicker(savedStartTime ? Number(savedStartTime) : undefined)
             pollStatus(savedRunId)
           } else {
-            clearPersistedRun()
+            clearStartTime()
           }
         })
         .catch(() => clearPersistedRun())  // 더 이상 조회 불가한 run이면 정리
@@ -137,7 +176,8 @@ export default function MentorDesign() {
         facility_id: FACILITY_ID,
         auto_approve: true,
       })
-      localStorage.setItem(STORAGE_KEY_RUN_ID, run_id)
+      persistRunId(run_id)
+      fetchHistory()
 
       const initial = await mealPlansApi.getStatus(run_id)
       setRun(initial)
@@ -145,7 +185,8 @@ export default function MentorDesign() {
         pollStatus(run_id)
       } else {
         stopTicker()
-        clearPersistedRun()
+        clearStartTime()
+        fetchHistory()
       }
     } catch (e) {
       setError((e as Error).message)
@@ -161,6 +202,7 @@ export default function MentorDesign() {
     try {
       await mealPlansApi.approve(run.id)
       pollStatus(run.id)
+      fetchHistory()
     } catch (e) {
       setError((e as Error).message)
     }
@@ -171,6 +213,29 @@ export default function MentorDesign() {
     try {
       await mealPlansApi.reject(run.id)
       pollStatus(run.id)
+      fetchHistory()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  // [추가 — 2026-07-01] 드롭다운에서 과거 실행을 선택했을 때: 해당 run을
+  // 불러와 화면에 표시. 아직 진행 중인 run이면 폴링을 이어서 시작함.
+  const handleSelectRun = async (runId: string) => {
+    if (!runId) return
+    stopPolling()
+    stopTicker()
+    setError(null)
+    try {
+      const selected = await mealPlansApi.getStatus(runId)
+      setRun(selected)
+      persistRunId(runId)
+      if (selected.status === "optimizing" || selected.status === "approving") {
+        startTicker()
+        pollStatus(runId)
+      } else {
+        clearStartTime()
+      }
     } catch (e) {
       setError((e as Error).message)
     }
@@ -197,7 +262,7 @@ export default function MentorDesign() {
           공통 식단을 설계합니다. (질환 직접 선택 불필요)
         </div>
 
-        <div className="btn-row" style={{ marginBottom: 0 }}>
+        <div className="btn-row" style={{ marginBottom: 0, alignItems: "center", gap: 10 }}>
           <button
             className="btn btn-accent"
             onClick={handleRunOptimize}
@@ -206,6 +271,23 @@ export default function MentorDesign() {
             <i className="ti ti-sparkles" />
             {submitting || isBusy ? "최적화 진행 중..." : "최적화 실행"}
           </button>
+
+          {history.length > 0 && (
+            <select
+              value={run?.id ?? ""}
+              onChange={(e) => handleSelectRun(e.target.value)}
+              style={{
+                fontSize: 12.5, padding: "8px 10px", borderRadius: "var(--radius-sm)",
+                border: "1px solid var(--border)", background: "var(--bg2)",
+                color: "var(--text1)", maxWidth: 320,
+              }}
+            >
+              <option value="" disabled>이전 실행 기록 보기</option>
+              {history.map((r) => (
+                <option key={r.id} value={r.id}>{formatRunLabel(r)}</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 

@@ -138,6 +138,17 @@ export interface MealPlanSlot {
   recommended_menu_count: number
 }
 
+export interface MealPlanRunSummary {
+  id: string
+  status: "optimizing" | "pending_review" | "approving" | "approved" | "rejected"
+  diseases_targeted: string[]
+  diseases_excluded: string[]
+  reoptimize_count: number
+  f1_violation: number | null
+  created_at: string
+  reviewed_at: string | null
+}
+
 export const mealPlansApi = {
   run: (payload: {
     facility_id: string
@@ -148,6 +159,12 @@ export const mealPlansApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  // [추가 — 2026-07-01] 시설의 최근 실행 이력 목록. run_id를 몰라도
+  // 드롭다운에서 골라 과거 결과를 다시 열어볼 수 있게 하기 위함.
+  list: (facilityId: string, limit = 20) =>
+    request<MealPlanRunSummary[]>(
+      `/api/meal-plans?facility_id=${facilityId}&limit=${limit}`
+    ),
   getStatus: (runId: string) => request<MealPlanRun>(`/api/meal-plans/${runId}`),
   approve: (runId: string) =>
     request(`/api/meal-plans/${runId}/approve`, { method: "POST" }),
@@ -177,6 +194,11 @@ export const wasteApi = {
 export const ordersApi = {
   preview: (runId: string, weekOffset = 0) =>
     request(`/api/orders/preview?run_id=${runId}&week_offset=${weekOffset}`),
+  // [추가 — 2026-07-01] 발주 엑셀 다운로드 링크. fetch로 미리 받아올
+  // 필요 없이 <a href={...}> 로 바로 연결해 브라우저가 다운로드하게 함
+  // (report_meal_plan_url 등과 동일한 패턴).
+  exportUrl: (runId: string, weekOffset = 0) =>
+    `${API_BASE}/api/orders/export?run_id=${runId}&week_offset=${weekOffset}`,
 }
 
 // ── 선호도 ──────────────────────────────────────────────
