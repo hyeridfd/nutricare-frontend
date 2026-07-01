@@ -28,6 +28,18 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ login_id: loginId, password }),
     }),
+  // [추가 — 2026-07-01] 아이디/비밀번호 변경. 둘 중 하나만 보내도 됨
+  // (예: 비밀번호만 바꾸고 싶으면 newLoginId는 undefined로 생략).
+  updateCredentials: (payload: {
+    facility_id: string
+    current_password: string
+    new_login_id?: string
+    new_password?: string
+  }) =>
+    request<{ message: string; login_id: string }>("/api/auth/credentials", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
 }
 
 // ── 환자 ────────────────────────────────────────────────

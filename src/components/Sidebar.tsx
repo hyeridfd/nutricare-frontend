@@ -8,9 +8,12 @@ const NAV_ITEMS = [
     { path: "/nutrition", label: "영양소 섭취 현황", icon: "ti-chart-donut" },
   ]},
   { section: "식단 관리", items: [
-    { path: "/design", label: "MENTOR 식단 설계", icon: "ti-sparkles" },
+    { path: "/design", label: "맞춤 식단 설계", icon: "ti-sparkles" },
     { path: "/preferences", label: "선호도 확인", icon: "ti-thumb-up" },
     { path: "/orders", label: "발주 엑셀 생성", icon: "ti-file-spreadsheet" },
+  ]},
+  { section: "계정", items: [
+    { path: "/account", label: "계정 설정", icon: "ti-lock" },
   ]},
 ]
 

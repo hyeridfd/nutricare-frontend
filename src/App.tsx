@@ -9,6 +9,7 @@ import NutritionIntake from "./pages/NutritionIntake"
 import MentorDesign from "./pages/MentorDesign"
 import Preferences from "./pages/Preferences"
 import OrderExcel from "./pages/OrderExcel"
+import AccountSettings from "./pages/AccountSettings"
 import "./dashboard.css"
 
 function DashboardLayout({ children }: { children: JSX.Element }) {
@@ -38,6 +39,7 @@ export default function App() {
                     <Route path="/design" element={<MentorDesign />} />
                     <Route path="/preferences" element={<Preferences />} />
                     <Route path="/orders" element={<OrderExcel />} />
+                    <Route path="/account" element={<AccountSettings />} />
                   </Routes>
                 </DashboardLayout>
               </RequireAuth>
