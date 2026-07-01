@@ -22,6 +22,23 @@ function formatElapsed(sec: number): string {
   return m > 0 ? `${m}분 ${s}초` : `${s}초`
 }
 
+// [추가 — 2026-07-01] CPU가 무거운 상황(NSGA-II 실행 중 등)에서는 서버가
+// 요청을 실제로 처리했는데도 응답만 늦게 와서 브라우저가 "Failed to
+// fetch"로 처리하는 경우가 있음. approve/reject처럼 중요한 요청은
+// 몇 번 재시도해 이런 일시적 네트워크 문제를 흡수함.
+async function _retryFetch<T>(fn: () => Promise<T>, retries = 2, delayMs = 1500): Promise<T> {
+  let lastErr: unknown
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await fn()
+    } catch (e) {
+      lastErr = e
+      if (i < retries) await new Promise((r) => setTimeout(r, delayMs))
+    }
+  }
+  throw lastErr
+}
+
 // [추가 — 2026-07-01] 드롭다운에 보여줄 run 요약 라벨.
 // run_id(UUID) 대신 날짜·질환·상태로 사람이 바로 알아볼 수 있게 함.
 function formatRunLabel(r: MealPlanRunSummary): string {
@@ -197,25 +214,41 @@ export default function MentorDesign() {
     }
   }
 
+  // [수정 — 2026-07-01] approve 요청이 네트워크 오류로 실패하면 바로
+  // "Failed to fetch" 에러 배너를 띄우던 기존 방식은, CPU가 무거운
+  // 상황에서 실제로는 서버가 요청을 받아 처리 중인데도 사용자에게
+  // "완전히 실패한 것"처럼 보이게 해서 재클릭을 유도하는 문제가 있었음.
+  // 이제는 클릭 즉시 낙관적으로 "처리 중" 상태로 전환해 로딩 화면을
+  // 보여주고, 폴링을 바로 시작함 — 실제 서버 상태(진짜 성공/실패 여부)는
+  // 몇 초 뒤 폴링 결과가 정확히 알려주므로, approve 요청 자체가
+  // 재시도 끝에 최종 실패하더라도 에러 배너를 바로 띄우지 않고 폴링에
+  // 판단을 맡김. 폴링이 계속 'pending_review'를 보여주면(진짜 실패라면)
+  // 사용자는 자연히 승인/재최적화 버튼이 다시 나타난 것을 보고 재시도할 수 있음.
   const handleApprove = async () => {
     if (!run) return
+    setError(null)
+    setRun({ ...run, status: "approving" })
+    startTicker()
+    pollStatus(run.id)
     try {
-      await mealPlansApi.approve(run.id)
-      pollStatus(run.id)
+      await _retryFetch(() => mealPlansApi.approve(run.id))
       fetchHistory()
     } catch (e) {
-      setError((e as Error).message)
+      console.warn("[MentorDesign] approve 요청 응답을 못 받았지만 폴링으로 상태를 계속 확인합니다:", e)
     }
   }
 
   const handleReject = async () => {
     if (!run) return
+    setError(null)
+    setRun({ ...run, status: "optimizing" })
+    startTicker()
+    pollStatus(run.id)
     try {
-      await mealPlansApi.reject(run.id)
-      pollStatus(run.id)
+      await _retryFetch(() => mealPlansApi.reject(run.id))
       fetchHistory()
     } catch (e) {
-      setError((e as Error).message)
+      console.warn("[MentorDesign] reject 요청 응답을 못 받았지만 폴링으로 상태를 계속 확인합니다:", e)
     }
   }
 
