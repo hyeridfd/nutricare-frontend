@@ -405,22 +405,29 @@ export default function MentorDesign() {
                 {run.diseases_targeted?.length ? run.diseases_targeted.join(", ") : "분석 중..."}
               </div>
             </div>
+            {/* [2026-07-01 임시 주석 처리 — 요청에 따라 화면에서만 숨김.
+                나중에 다시 보여주려면 이 블록의 주석만 해제하면 됨]
             <div className="opt-param">
               <div className="opt-param-label">영양 위반도 (f1)</div>
               <div className="opt-param-val">{run.f1_violation?.toFixed(4) ?? "-"}</div>
             </div>
+            */}
             <div className="opt-param">
               <div className="opt-param-label">재최적화 횟수</div>
               <div className="opt-param-val">{run.reoptimize_count}</div>
             </div>
+            {/*
             <div className="opt-param">
               <div className="opt-param-label">교집합 제외 질환</div>
               <div className="opt-param-val">
                 {run.diseases_excluded?.length ? run.diseases_excluded.join(", ") : "없음"}
               </div>
             </div>
+            */}
           </div>
 
+          {/* [2026-07-01 임시 주석 처리 — 요청에 따라 화면에서만 숨김.
+              나중에 다시 보여주려면 이 블록의 주석만 해제하면 됨]
           {run.dementia_patient_count > 0 && (
             <div style={{
               fontSize: 12.5, color: "var(--text2)", background: "var(--bg3)",
@@ -433,6 +440,7 @@ export default function MentorDesign() {
               별도 반영됩니다.
             </div>
           )}
+          */}
 
           {run.status === "pending_review" && (
             <div className="btn-row">
