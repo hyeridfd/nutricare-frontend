@@ -4,7 +4,15 @@ import { LoadingState, ErrorState, EmptyState } from "../components/StatusStates
 import { useAuth } from "../lib/auth"
 
 const POLL_INTERVAL_MS = 3000
-const MAX_CONSECUTIVE_FAILURES = 5  // 약 15초간 연속 실패해야 중단 (일시적 네트워크 끊김 허용)
+// [수정 — 2026-07-01] 승인(approve) 후 _finalize_run이 대량 Supabase 저장
+// + Storage 업로드 + OpenAI 호출까지 순차로 처리하는데, CPU가 제한된
+// 서버에서는 이게 수십 초 걸릴 수 있어 폴링이 그 사이 응답을 못 받는
+// 경우가 흔함. 기존에는 연속 5회(15초) 실패만으로 바로 에러를 띄워서,
+// 실제로는 서버가 정상 처리 중인데도 "Failed to fetch"로 보이는 문제가
+// 있었음. 이제 두 단계로 나눔: SOFT는 부드러운 안내만 하고 폴링은 계속
+// 이어가며, HARD(훨씬 김)에 도달해야 진짜로 중단하고 에러를 보여줌.
+const SOFT_FAILURE_THRESHOLD = 10  // 약 30초 — "지연 중" 안내만, 계속 시도
+const HARD_FAILURE_THRESHOLD = 40  // 약 2분 — 진짜로 포기하고 에러 표시
 const STORAGE_KEY_RUN_ID = "nutricare_mentor_run_id"
 const STORAGE_KEY_START_TIME = "nutricare_mentor_start_time"
 
@@ -62,6 +70,7 @@ export default function MentorDesign() {
   const [run, setRun] = useState<MealPlanRun | null>(null)
   const [history, setHistory] = useState<MealPlanRunSummary[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [stalled, setStalled] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [elapsedSec, setElapsedSec] = useState(0)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -128,11 +137,13 @@ export default function MentorDesign() {
   const pollStatus = (runId: string) => {
     stopPolling()
     failureCountRef.current = 0
+    setStalled(false)
     pollRef.current = setInterval(async () => {
       try {
         const updated = await mealPlansApi.getStatus(runId)
         failureCountRef.current = 0   // 성공하면 실패 카운트 리셋
         setError(null)                // 이전 일시적 에러 메시지도 정리
+        setStalled(false)
         setRun(updated)
         if (updated.status === "approved" || updated.status === "rejected") {
           stopPolling()
@@ -142,11 +153,15 @@ export default function MentorDesign() {
         }
       } catch (e) {
         failureCountRef.current += 1
-        // NSGA-II가 몇 분씩 걸리는 동안 Render 콜드스타트/일시적 네트워크
-        // 문제로 폴링 한두 번이 실패할 수 있음 — 그때마다 멈추면 사용자가
-        // 영영 결과를 못 보게 되므로, 연속 실패가 누적될 때만 중단함.
-        if (failureCountRef.current >= MAX_CONSECUTIVE_FAILURES) {
-          setError(`${(e as Error).message} (연속 ${MAX_CONSECUTIVE_FAILURES}회 실패로 상태 확인을 중단했습니다)`)
+        // 승인 후 서버가 대량 저장/업로드로 CPU를 오래 쓰는 동안 폴링이
+        // 응답을 못 받는 건 흔한 일이라, 어느 정도까지는(SOFT) 에러 없이
+        // "지연 중" 정도로만 부드럽게 알리고 계속 시도함. 정말 오래(HARD)
+        // 응답이 없을 때만 진짜로 포기하고 에러를 보여줌.
+        if (failureCountRef.current >= SOFT_FAILURE_THRESHOLD) {
+          setStalled(true)
+        }
+        if (failureCountRef.current >= HARD_FAILURE_THRESHOLD) {
+          setError(`${(e as Error).message} (장시간 응답이 없어 상태 확인을 중단했습니다)`)
           stopPolling()
           stopTicker()
         }
@@ -206,9 +221,34 @@ export default function MentorDesign() {
         fetchHistory()
       }
     } catch (e) {
-      setError((e as Error).message)
-      stopTicker()
-      clearPersistedRun()
+      // [수정 — 2026-07-01] POST /run 자체가 "Failed to fetch"로 실패해도,
+      // CPU가 무거운 상황에서는 서버가 실제로 run을 생성해 백그라운드로
+      // 돌리고 있는데 응답만 못 받았을 가능성이 있음. approve/reject와
+      // 달리 이 요청은 멱등(idempotent)하지 않아 무작정 재시도하면
+      // 중복 실행이 생길 위험이 있으므로, 재시도 대신 최근 실행 이력을
+      // 다시 조회해 "방금 막 생성된 것으로 보이는 run"이 있는지 확인함.
+      // 있으면 그 run을 이어서 표시하고, 없으면(진짜로 실패한 경우)만
+      // 에러를 보여줌.
+      try {
+        const list = await mealPlansApi.list(FACILITY_ID)
+        setHistory(list)
+        const justStarted = list.find((r) => {
+          const ageSec = (Date.now() - new Date(r.created_at).getTime()) / 1000
+          return ageSec < 30 && r.status === "optimizing"
+        })
+        if (justStarted) {
+          console.warn("[MentorDesign] /run 응답을 못 받았지만 서버에 새 실행이 생성된 것을 확인해 이어서 표시합니다.")
+          await handleSelectRun(justStarted.id)
+        } else {
+          setError((e as Error).message)
+          stopTicker()
+          clearPersistedRun()
+        }
+      } catch {
+        setError((e as Error).message)
+        stopTicker()
+        clearPersistedRun()
+      }
     } finally {
       setSubmitting(false)
     }
@@ -414,6 +454,11 @@ export default function MentorDesign() {
               <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>
                 {STAGE_HINT[run!.status] ?? "잠시만 기다려 주세요..."}
               </div>
+              {stalled && (
+                <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 8 }}>
+                  서버 응답이 잠시 지연되고 있습니다. 계속 확인 중이니 조금만 더 기다려 주세요.
+                </div>
+              )}
             </div>
           )}
 
