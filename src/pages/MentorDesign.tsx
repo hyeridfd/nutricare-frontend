@@ -77,6 +77,11 @@ export default function MentorDesign() {
   const tickerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startTimeRef = useRef<number | null>(null)
   const failureCountRef = useRef(0)
+  // [추가 — 2026-07-01] 승인/재최적화 클릭 직후, approve POST가 서버에
+  // 아직 반영되기 전 타이밍에 폴링이 먼저 도착해 옛 상태('pending_review')를
+  // 그대로 돌려주는 경우가 있음 — 이 시각을 기록해 잠깐(8초) 동안은
+  // 그런 "뒷걸음질" 폴링 결과를 무시함.
+  const actionClickTimeRef = useRef<number | null>(null)
 
   const stopPolling = () => {
     if (pollRef.current) {
@@ -144,6 +149,20 @@ export default function MentorDesign() {
         failureCountRef.current = 0   // 성공하면 실패 카운트 리셋
         setError(null)                // 이전 일시적 에러 메시지도 정리
         setStalled(false)
+
+        // 승인/재최적화 클릭 직후 짧은 유예 시간 동안, 서버가 아직 요청을
+        // 반영하기 전이라 옛 상태(pending_review)가 그대로 돌아오는 경우가
+        // 있음 — 이걸 그대로 반영하면 방금 눌렀는데 승인 버튼이 다시
+        // 나타나는 것처럼 보여 중복 클릭을 유도하므로, 이번 결과는 건너뛰고
+        // 다음 폴링을 기다림.
+        const clickedRecently =
+          actionClickTimeRef.current !== null &&
+          Date.now() - actionClickTimeRef.current < 8000
+        if (clickedRecently && updated.status === "pending_review") {
+          return
+        }
+        actionClickTimeRef.current = null
+
         setRun(updated)
         if (updated.status === "approved" || updated.status === "rejected") {
           stopPolling()
@@ -267,6 +286,7 @@ export default function MentorDesign() {
   const handleApprove = async () => {
     if (!run) return
     setError(null)
+    actionClickTimeRef.current = Date.now()
     setRun({ ...run, status: "approving" })
     startTicker()
     pollStatus(run.id)
@@ -281,6 +301,7 @@ export default function MentorDesign() {
   const handleReject = async () => {
     if (!run) return
     setError(null)
+    actionClickTimeRef.current = Date.now()
     setRun({ ...run, status: "optimizing" })
     startTicker()
     pollStatus(run.id)
