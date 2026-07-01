@@ -13,6 +13,10 @@ const POLL_INTERVAL_MS = 3000
 // 이어가며, HARD(훨씬 김)에 도달해야 진짜로 중단하고 에러를 보여줌.
 const SOFT_FAILURE_THRESHOLD = 10  // 약 30초 — "지연 중" 안내만, 계속 시도
 const HARD_FAILURE_THRESHOLD = 40  // 약 2분 — 진짜로 포기하고 에러 표시
+// [수정 — 2026-07-01] 승인 직후 "뒷걸음질" 폴링 결과를 무시하는 유예 시간.
+// 8초는 너무 짧아 승인 처리(대량 저장+업로드+OpenAI 호출)가 그보다 오래
+// 걸리면 여전히 버튼이 깜빡였음. HARD_FAILURE_THRESHOLD와 맞춰 2분으로 늘림.
+const ACTION_GRACE_MS = 120000
 const STORAGE_KEY_RUN_ID = "nutricare_mentor_run_id"
 const STORAGE_KEY_START_TIME = "nutricare_mentor_start_time"
 
@@ -157,7 +161,7 @@ export default function MentorDesign() {
         // 다음 폴링을 기다림.
         const clickedRecently =
           actionClickTimeRef.current !== null &&
-          Date.now() - actionClickTimeRef.current < 8000
+          Date.now() - actionClickTimeRef.current < ACTION_GRACE_MS
         if (clickedRecently && updated.status === "pending_review") {
           return
         }
