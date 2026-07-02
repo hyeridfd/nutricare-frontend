@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { mealPlansApi, MealPlanRun, MealPlanRunSummary } from "../lib/api"
+import { mealPlansApi, MealPlanRun, MealPlanRunSummary, MealPlanTypesResponse } from "../lib/api"
 import { LoadingState, ErrorState, EmptyState } from "../components/StatusStates"
 import { useAuth } from "../lib/auth"
 
@@ -75,6 +75,11 @@ export default function MentorDesign() {
   const [history, setHistory] = useState<MealPlanRunSummary[]>([])
   const [error, setError] = useState<string | null>(null)
   const [stalled, setStalled] = useState(false)
+  // [추가 — 2026-07-01] 유형별(2단계/3단계 대체 패턴 동일 그룹) 28일 식단표 보기
+  const [mealPlanTypes, setMealPlanTypes] = useState<MealPlanTypesResponse | null>(null)
+  const [typesLoading, setTypesLoading] = useState(false)
+  const [typesError, setTypesError] = useState<string | null>(null)
+  const [selectedTypeIndex, setSelectedTypeIndex] = useState<number>(1)
   const [submitting, setSubmitting] = useState(false)
   const [elapsedSec, setElapsedSec] = useState(0)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -317,10 +322,31 @@ export default function MentorDesign() {
     }
   }
 
+  // [추가 — 2026-07-01] "유형별 보기" 버튼 클릭 시 최초 1회만 조회(캐시).
+  const handleLoadTypes = async () => {
+    if (!run) return
+    if (mealPlanTypes) {
+      setMealPlanTypes(null)  // 이미 열려있으면 토글로 닫기
+      return
+    }
+    setTypesError(null)
+    setTypesLoading(true)
+    try {
+      const data = await mealPlansApi.getTypes(run.id)
+      setMealPlanTypes(data)
+      setSelectedTypeIndex(data.groups[0]?.type_index ?? 1)
+    } catch (e) {
+      setTypesError((e as Error).message)
+    } finally {
+      setTypesLoading(false)
+    }
+  }
+
   // [추가 — 2026-07-01] 드롭다운에서 과거 실행을 선택했을 때: 해당 run을
   // 불러와 화면에 표시. 아직 진행 중인 run이면 폴링을 이어서 시작함.
   const handleSelectRun = async (runId: string) => {
     if (!runId) return
+    setMealPlanTypes(null)  // 다른 run으로 전환 시 이전 유형별 보기 초기화
     stopPolling()
     stopTicker()
     setError(null)
@@ -416,14 +442,12 @@ export default function MentorDesign() {
               <div className="opt-param-label">재최적화 횟수</div>
               <div className="opt-param-val">{run.reoptimize_count}</div>
             </div>
-            {/*
             <div className="opt-param">
               <div className="opt-param-label">교집합 제외 질환</div>
               <div className="opt-param-val">
                 {run.diseases_excluded?.length ? run.diseases_excluded.join(", ") : "없음"}
               </div>
             </div>
-            */}
           </div>
 
           {/* [2026-07-01 임시 주석 처리 — 요청에 따라 화면에서만 숨김.
@@ -471,12 +495,79 @@ export default function MentorDesign() {
                     <i className="ti ti-file-text" /> 조리_지침서.txt
                   </a>
                 )}
+                <button className="btn" onClick={handleLoadTypes} disabled={typesLoading}>
+                  <i className="ti ti-list-details" />
+                  {typesLoading ? "불러오는 중..." : mealPlanTypes ? "유형별 보기 닫기" : "유형별 보기"}
+                </button>
               </div>
             ) : (
               <div style={{ fontSize: 12, color: "var(--text3)" }}>
                 보고서 파일을 준비하지 못했습니다. 잠시 후 새로고침해 보세요.
               </div>
             )
+          )}
+
+          {typesError && <ErrorState message={`유형 정보를 불러오지 못했습니다: ${typesError}`} onRetry={handleLoadTypes} />}
+
+          {mealPlanTypes && mealPlanTypes.groups.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                {mealPlanTypes.groups.map((g) => (
+                  <button
+                    key={g.type_index}
+                    onClick={() => setSelectedTypeIndex(g.type_index)}
+                    className="btn"
+                    style={{
+                      background: selectedTypeIndex === g.type_index ? "var(--accent)" : "var(--bg3)",
+                      color: selectedTypeIndex === g.type_index ? "#fff" : "var(--text2)",
+                      border: "none",
+                    }}
+                  >
+                    {g.label} ({g.patient_count}명)
+                  </button>
+                ))}
+              </div>
+
+              {(() => {
+                const group = mealPlanTypes.groups.find((g) => g.type_index === selectedTypeIndex)
+                if (!group) return null
+                return (
+                  <>
+                    <div style={{ fontSize: 12.5, color: "var(--text2)", marginBottom: 8 }}>
+                      대상: {group.patient_names.join(", ")}
+                    </div>
+                    <div style={{ overflowX: "auto" }}>
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>일차</th><th>끼니</th><th>밥</th><th>국</th><th>주찬</th>
+                            <th>부찬1</th><th>부찬2</th><th>김치</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.slots.map((s, i) => (
+                            <tr key={i}>
+                              <td>{s.day_number}일</td>
+                              <td>{s.meal_type}</td>
+                              <td>{s.rice}</td>
+                              <td>{s.soup}</td>
+                              <td>{s.main_dish}</td>
+                              <td style={{ background: s.changed_slots.includes("side_dish_1") ? "#FFF2CC" : undefined }}>
+                                {s.side_dish_1}
+                              </td>
+                              <td style={{ background: s.changed_slots.includes("side_dish_2") ? "#FFF2CC" : undefined }}>
+                                {s.side_dish_2}
+                              </td>
+                              <td>{s.kimchi}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )
+              })()}
+            </div>
           )}
 
           {isBusy && (

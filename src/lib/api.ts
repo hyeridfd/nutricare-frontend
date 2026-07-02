@@ -188,6 +188,34 @@ export const mealPlansApi = {
     ),
   servings: (runId: string, patientId?: string) =>
     request(`/api/meal-plans/${runId}/servings${patientId ? `?patient_id=${patientId}` : ""}`),
+  // [추가 — 2026-07-01] 유형별(2단계/3단계 대체 패턴이 동일한 환자 그룹)
+  // 28일 식단표. report_agent.py의 "유형별_28일_식단표" 시트와 동일한 로직을
+  // 화면에서 바로 확인할 수 있게 함.
+  getTypes: (runId: string) =>
+    request<MealPlanTypesResponse>(`/api/meal-plans/${runId}/types`),
+}
+
+export interface MealPlanTypeSlot {
+  day_number: number
+  meal_type: string
+  rice: string
+  soup: string
+  main_dish: string
+  side_dish_1: string
+  side_dish_2: string
+  kimchi: string
+  changed_slots: string[]
+}
+export interface MealPlanTypeGroup {
+  type_index: number
+  label: string
+  patient_names: string[]
+  patient_count: number
+  slots: MealPlanTypeSlot[]
+}
+export interface MealPlanTypesResponse {
+  run_id: string
+  groups: MealPlanTypeGroup[]
 }
 
 // ── 잔반 ────────────────────────────────────────────────
