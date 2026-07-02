@@ -11,6 +11,9 @@ interface OrderItem {
   product_name: string | null
   unit_price: number | null
   estimated_cost: number | null
+  // [추가 — 2026-07-01] 이 메뉴가 이번 주 안에서 개인화 부찬 대체로
+  // 쓰인 적이 있으면 true (order_service.py의 is_substitute와 대응).
+  is_substitute: boolean
 }
 interface OrderPreview {
   run_id: string
@@ -44,6 +47,7 @@ export default function OrderExcel() {
   const [weekOffset, setWeekOffset] = useState(0)
   const [preview, setPreview] = useState<OrderPreview | null>(null)
   const [loading, setLoading] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -74,6 +78,36 @@ export default function OrderExcel() {
       setError((e as Error).message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // [수정 — 2026-07-01] <a href download>는 클릭해도 아무 로딩 표시가 없어
+  // 느리게 느껴지면 사용자가 재클릭 → 중복 다운로드 요청이 발생하던
+  // 문제가 있었음. fetch+Blob 기반 버튼으로 바꿔 로딩 스피너를 보여주고,
+  // 다운로드 중에는 버튼을 비활성화해 중복 클릭 자체를 막음. 실패 시
+  // devtools에만 남고 화면엔 아무 표시가 없던 문제도 함께 해결(에러 상태로 노출).
+  const handleDownload = async () => {
+    if (!runId || downloading) return
+    setDownloading(true)
+    setError(null)
+    try {
+      const res = await fetch(ordersApi.exportUrl(runId, weekOffset))
+      if (!res.ok) {
+        throw new Error(`엑셀 다운로드 실패 (${res.status})`)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `발주서_${preview?.week_range ?? ""}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setDownloading(false)
     }
   }
 
@@ -134,13 +168,14 @@ export default function OrderExcel() {
         <div className="card gap-14">
           <div className="card-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span><i className="ti ti-table" /> 발주 미리보기 ({preview.week_range})</span>
-            <a
+            <button
               className="btn btn-accent"
-              href={ordersApi.exportUrl(runId, weekOffset)}
-              download
+              onClick={handleDownload}
+              disabled={downloading}
             >
-              <i className="ti ti-file-spreadsheet" /> 발주 엑셀 다운로드
-            </a>
+              <i className="ti ti-file-spreadsheet" />
+              {downloading ? "다운로드 중..." : "발주 엑셀 다운로드"}
+            </button>
           </div>
           <div className="excel-wrap">
             <table className="excel-table">
@@ -153,7 +188,18 @@ export default function OrderExcel() {
               <tbody>
                 {preview.items.map((item, i) => (
                   <tr key={i}>
-                    <td>{item.menu_name}</td>
+                    <td>
+                      {item.menu_name}
+                      {item.is_substitute && (
+                        <span
+                          className="badge badge-amber"
+                          style={{ marginLeft: 6, fontSize: 10, padding: "1px 6px" }}
+                          title="개인화 부찬 대체로 추가된 품목입니다 (원래 28일 식단표에는 없던 메뉴)"
+                        >
+                          대체찬
+                        </span>
+                      )}
+                    </td>
                     <td>{item.ingredient}</td>
                     <td>{item.servings_used}</td>
                     <td>{item.total_weight_g.toLocaleString()}</td>
